@@ -1,0 +1,98 @@
+# Copyright (c) 2025-2026 fei_cong(https://github.com/feicong/feicong-course)
+
+name: ci
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 目标Release标签（留空则使用 latest）
+        required: false
+        default: ""
+        type: string
+      upload:
+        description: 是否上传到Release
+        required: true
+        default: true
+        type: boolean
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref_name }}-${{ github.sha }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build Windows x64
+    runs-on: windows-2022
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Setup MSBuild
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Build Release|x64
+        shell: pwsh
+        run: |
+          msbuild IRvana.sln /p:Configuration=Release /p:Platform=x64 /m /nologo
+
+      - name: Compute release tag
+        id: vars
+        shell: bash
+        run: |
+          release_tag="${{ inputs.release_tag }}"
+          if [ -z "$release_tag" ]; then
+            release_tag="latest"
+          fi
+          echo "release_tag=$release_tag" >> "$GITHUB_OUTPUT"
+
+          upload="true"
+          if [ '${{ github.event_name }}' = 'workflow_dispatch' ]; then
+            upload='${{ inputs.upload }}'
+          fi
+          echo "upload=$upload" >> "$GITHUB_OUTPUT"
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: IRvana-windows-x64
+          path: x64/Release/IRvana.exe
+          if-no-files-found: error
+
+      - name: Update release tag
+        if: steps.vars.outputs.upload == 'true'
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -f "${{ steps.vars.outputs.release_tag }}" "${{ github.sha }}"
+          git push origin "refs/tags/${{ steps.vars.outputs.release_tag }}" --force
+
+      - name: Publish to GitHub Release
+        if: steps.vars.outputs.upload == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.vars.outputs.release_tag }}
+          target_commitish: ${{ github.sha }}
+          name: IRvana (${{ steps.vars.outputs.release_tag }})
+          body: |
+            Windows x64 Release build of IRvana.
+
+            **Commit:** `${{ github.sha }}`
+            **Branch:** `${{ github.ref_name }}`
+
+            ### Usage
+            Download `IRvana.exe` and place it in the project root alongside the `LLVM-18.1.5/`, `OLLVM/`, and `IRgen/` directories before running.
+          files: x64/Release/IRvana.exe
+          overwrite_files: true
+          make_latest: true
