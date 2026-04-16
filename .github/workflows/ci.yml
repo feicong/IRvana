@@ -9,12 +9,12 @@ on:
   workflow_dispatch:
     inputs:
       release_tag:
-        description: 目标Release标签（留空则使用 latest）
+        description: Target release tag (leave empty to use "latest")
         required: false
         default: ""
         type: string
       upload:
-        description: 是否上传到Release
+        description: Upload artifacts to GitHub Release
         required: true
         default: true
         type: boolean
@@ -23,7 +23,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref_name }}-${{ github.sha }}
+  group: ${{ github.workflow }}-${{ github.ref_name }}
   cancel-in-progress: false
 
 jobs:
